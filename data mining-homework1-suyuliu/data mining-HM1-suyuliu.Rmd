@@ -1,0 +1,470 @@
+---
+title: "Data Mining Homework 1"
+author: "Suyu Liu"
+date: "2023-01-27"
+output: 
+       pdf_document
+---
+
+```{r, echo=FALSE, results='hide'}
+knitr::opts_chunk$set(error = TRUE)
+library(dplyr, warn.conflicts=FALSE,
+  quietly=TRUE,
+  verbose=FALSE) |> 
+  suppressMessages() |> 
+  suppressWarnings()
+
+library(tidyverse,
+         warn.conflicts=FALSE,
+  quietly=TRUE,
+  verbose=FALSE) |> 
+  suppressMessages() |> 
+  suppressWarnings()
+
+library(ggplot2)
+library(knitr)
+library(caret,
+        warn.conflicts=FALSE,
+  quietly=TRUE,
+  verbose=FALSE) |> 
+  suppressMessages() |> 
+  suppressWarnings()
+
+library(foreach,
+        warn.conflicts=FALSE,
+  quietly=TRUE,
+  verbose=FALSE) |> 
+  suppressMessages() |> 
+  suppressWarnings()
+
+library(markdown)
+library(modelr)
+library(purrr,
+        warn.conflicts=FALSE,
+  quietly=TRUE,
+  verbose=FALSE) |> 
+  suppressMessages() |> 
+  suppressWarnings()
+
+```
+
+## 1) Data visualization: flight at ABIA
+
+-   What is the best time of day to fly to minimize delays, and does this change by airline?
+
+The figure 1 takes the scheduled departure time of the flight as the abscissa and the average departure delay as the ordinate, showing the average departure delay of the plane every hour of day in 2008. For the departure time, 5am to 6am is the best period with the least average flight departure delay time. According to the figure1, flights during this time even departed earlier.
+
+```{r, echo=FALSE}
+ABIA=read.csv(file = "/Users/liusu/Desktop/ECO395M-master/data/ABIA.csv", header = T)
+  CRSDepTimegroup<-cut(ABIA$CRSDepTime, breaks = c(0, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, Inf), 
+      labels =  c("0-1am", "5-6am", "6-7am", "7-8am", "8-9am", "9-10am", "10-11am", "11-12am", "12-1pm", "1-2pm", "2-3pm", "3-4pm", "4-5pm", "5-6pm", "6-7pm", "7-8pm", "8-9pm", "9-10pm", "10-11pm", "11-12pm"))
+
+newABIA<-cbind(ABIA, CRSDepTimegroup)
+
+newABIA_summary = newABIA %>%
+  drop_na(DepDelay) %>%
+  group_by(CRSDepTimegroup) %>%
+  summarise(avg_DepDelay = mean(DepDelay))
+
+newABIA_summary <- transform(newABIA_summary, name=1)  
+
+theme_set(theme_bw())
+pd <- position_dodge(.1)
+ggplot(newABIA_summary, aes(x=CRSDepTimegroup, y=avg_DepDelay, color=avg_DepDelay)) +
+  geom_line(color="black", position = pd, aes(group=name)) +
+  geom_point(position = pd) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  labs(x="time of day", y="departure delay(min)",
+       title=quote("Everage departure delays by time of day")) +
+       theme(panel.grid.major = element_blank(),
+         plot.title=element_text(face="bold", hjust=0.5)) 
+
+```
+
+Figure 1: Line graph of the flight departure delay of the time of day
+
+-   Does this change by airline?
+
+The figure 2 shows the average departure delay time per day by airline. Upon Figure 2, the situation of each airline is very different. The best time of day to fly to minimize delays changes by airline. US airline is the most punctual airline. UA's flight at 8:00 p.m. is even delayed by an average of more than 150 minutes.
+
+```{r, echo=FALSE}
+# by different airline 
+newABIA_summary_1 = newABIA %>%
+  drop_na(DepDelay) %>%
+  group_by(CRSDepTimegroup,UniqueCarrier) %>%
+  summarise(avg_DepDelay_1 = mean(DepDelay),
+            .groups = 'drop')
+
+ggplot(newABIA_summary_1) +
+  geom_col(aes(x=factor(CRSDepTimegroup), y=avg_DepDelay_1), width = .5, fill="blue2") +
+  facet_wrap(~UniqueCarrier) +
+  scale_x_discrete(guide = guide_axis(check.overlap = T)) +
+  labs(x="time of day",
+       y="departure delay(min)",
+       title = "Everage departure delays by time of day and airline") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) +
+  coord_flip()
+
+```
+
+Figure 2: Bar graph of the flight departure delay by the time of day and different airlines
+
+
+
+## 2) Wrangling the Olympics
+
+### A) The 95% of heights for female competitors across all athletics events is 183.00.
+
+```{r, echo=FALSE}
+olympics_top20=read.csv("/Users/liusu/Desktop/ECO395M-master/data/olympics_top20.csv", header = T)
+
+#A) 
+olympics_top20_height=olympics_top20 %>%
+  filter(sport=="Athletics", sex=="F")
+  v<- olympics_top20_height %>%
+ summarise(q95_heights = quantile(height, 0.95))
+
+v
+```
+
+### B) Swimming Women's 100 metres Butterfly was the single women's event with the greatest variability in competitor's heights. The following table shows the top 7 women's events, both team and individual, in which the heights of female competitors vary the most.
+
+```{r, echo=FALSE}
+#B) standard deviation
+olympics_top20_fe = olympics_top20 %>%
+  filter(sex == "F")%>%
+  group_by(event) %>%
+  summarise(sd_femaleheights = sd(height)) %>%
+  arrange(desc(sd_femaleheights)) %>%
+  head(7)
+
+knitr::kable(olympics_top20_fe, align = "cccc")
+```
+
+### C) The average age of Olympic swimmers
+
+-   How has the average age of Olympic swimmers changed over time?
+
+Upon figure 1, the average age of swimmers has fluctuated over time around the age of 20. From 1900 to 1912, the average age increased a lot. From 1912 to around 1931, the average age dropped again from over 25 to under 20. From then until 1975, the average age remained around 20. Since 1975, the age of the players has increased over time.
+
+```{r, echo=FALSE}
+#C)
+olympics_top20_swimming = olympics_top20 %>%
+  filter(sport == "Swimming")
+ageovertime= olympics_top20_swimming %>%
+  group_by(year) %>%
+  summarise(avg_age = mean(age)) 
+
+## avg age
+ggplot(ageovertime) +
+  geom_line(aes(x=year, y=avg_age)) +
+  labs(title = "Swimmer everage age over time") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+
+```
+
+Figure 1: Line graph of average age of Olympic swimmers changed over time
+
+-   Does the trend look different for male swimmers relative to female swimmers? The average age of both male and female swimmers has increased over time since 1950. However, since 1925, the average age of female swimmers has been lower than that of male swimmers.
+
+```{r, echo=FALSE}
+##avg age by sex
+sex_ageovertime= olympics_top20_swimming %>%
+  group_by(year, sex) %>%
+  summarise(sex_avg_age = mean(age),
+            .groups = 'drop') 
+
+ggplot(sex_ageovertime)+
+  geom_line(aes(x=year, y=sex_avg_age,color=sex)) +
+  labs(title = "Swimmer everage age over time by sex") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+```
+
+Figure 2: Line graph of average age of Olympic swimmers changed over time by sex
+
+
+
+## 3) K-nearest neighbors: cars
+
+-   Two Methods: I split the data under 0.8 probability and also use the K-fold cross validation to get optimal K.
+
+K-fold cross validation:
+
+1.  Split the data into a training and a testing set with 5 folds randomly.
+
+2.  RMSE and prediction.
+
+3.  Find the minimum RMSE under different K values(1-300 & 1-233).
+
+4.  Plot the fitted model with optimal K.
+
+# Trim 350
+
+-   Method 1: Split the data under 0.8 probability
+
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+sclass=read.csv("/Users/liusu/Desktop/ECO395M-master/data/sclass.csv", header = T)
+library(rsample)
+sclass_350 = sclass %>%
+  filter(trim == "350")
+
+library(parallel)
+k_grid = c(2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45,
+           50, 60, 70, 80, 90, 100, 125, 150, 175, 200, 250, 300)
+rmse_out = foreach(i=1:20, .combine='rbind') %dopar% {
+  sclass_350_split =  initial_split(sclass_350, prop=0.8)
+  sclass_350_train = training(sclass_350_split)
+  sclass_350_test  = testing(sclass_350_split)
+  this_rmse = foreach(k = k_grid, .combine='c') %do% {
+    # train the model and calculate RMSE on the test set
+    knn_model = knnreg(price ~ mileage, data=sclass_350_train, k = k, use.all=TRUE)
+    modelr::rmse(knn_model, sclass_350_test)
+  }
+  data.frame(k=k_grid, rmse=this_rmse)
+}
+
+rmse_out_min = rmse_out%>%
+arrange(rmse) %>%
+  head(1) 
+
+rmse_out_min
+
+```
+
+```{r, echo=FALSE, message=FALSE}
+ggplot(rmse_out) + geom_boxplot(aes(x=factor(k), y=rmse)) + theme_bw(base_size=7)+
+  labs(title = "The plot of RMSE versus K") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+```
+
+The optimal k is 15, which has the minimum RMSE. The following is the plot of prediction.
+
+```{r, echo=FALSE, message=FALSE}
+sclass_350_split =  initial_split(sclass_350, prop=0.8)
+  sclass_350_train = training(sclass_350_split)
+  sclass_350_test  = testing(sclass_350_split)
+
+# pick best k=15, then plot the fitted model
+knn15 = knnreg(price ~ mileage, data=sclass_350_train, k=15)
+# plot the fit
+sclass_350_test = sclass_350_test %>%
+  mutate(price_pred = predict(knn15, sclass_350_test))
+
+p_test = ggplot(data = sclass_350_test) +
+  geom_point(mapping = aes(x= mileage, y= price), alpha=0.2)
+
+p_test + geom_line(aes(x=mileage, y=price_pred), color='red') +
+  labs(title = "Predictions under K=15") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+
+```
+
+-   Method 2: K-fold cross validation
+
+-   The plot of RMSE versus K. The following is the minimum RMSE, corresponding to k is 15.
+
+```{r, echo=FALSE}
+library(rsample)
+sclass_350 = sclass %>%
+  filter(trim == "350")
+
+# split into training and testing
+sclass_350_split = initial_split(sclass_350, prop=0.8)
+sclass_350_train = training(sclass_350_split)
+sclass_350_test  = testing(sclass_350_split)
+
+## now use k-folds cross validation
+K_folds = 5
+# method: second pipeline
+sclass_350_folds = crossv_kfold(sclass_350, k=K_folds)
+
+# map the model-fitting function over the training sets
+models = map(sclass_350_folds$train, ~ knnreg(price ~ mileage, k=2, data=., use.all=FALSE))
+# map the RMSE calculation over the trained models and test sets simultaneously
+errs = map2_dbl(models, sclass_350_folds$test, modelr::rmse)
+
+
+# so now we can do this across a range of k
+k_grid = c(2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45,
+           50, 60, 70, 80, 90, 100, 125, 150, 175, 200, 250, 300)
+# models across the same train/test splits
+cv_grid = foreach(k=k_grid, .combine = 'rbind') %dopar% {
+  models=map(sclass_350_folds$train, ~ knnreg(price ~ mileage, k=k, data=., use.all=FALSE))
+  errs=map2_dbl(models, sclass_350_folds$test, modelr::rmse)
+  c(k=k, err = mean(errs), std_err=sd(errs)/sqrt(K_folds))
+} %>% as.data.frame
+
+mink_350=cv_grid%>%
+arrange(err) %>%
+  head(1) 
+
+mink_350
+```
+
+```{r, echo=FALSE}
+
+# plot means and std errors versus k
+ggplot(cv_grid) + 
+  geom_point(aes(x=k, y=err)) + 
+  geom_errorbar(aes(x=k, ymin = err-std_err, ymax = err+std_err)) + 
+  scale_x_log10() +
+  labs(title = "The plot of RMSE versus K") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+```
+
+-   For the optimal value of K with minimum rmse, show a plot of the fitted model--predictions vs. x.
+
+```{r, echo=FALSE}
+
+
+
+# pick best k=15, then plot the fitted model
+knn15 = knnreg(price ~ mileage, data=sclass_350_train, k=15)
+# plot the fit
+sclass_350_test = sclass_350_test %>%
+  mutate(price_pred = predict(knn15, sclass_350_test))
+
+p_test = ggplot(data = sclass_350_test) +
+  geom_point(mapping = aes(x= mileage, y= price), alpha=0.2)
+
+p_test + geom_line(aes(x=mileage, y=price_pred), color='red') +
+  labs(title = "Predictions") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+
+```
+
+## Trim: 65AMG
+
+-   Method 1: Split the data under 0.8 probability
+
+```{r, echo=FALSE, message=FALSE, include=FALSE}
+
+sclass_65AMG = sclass %>%
+  filter(trim == "65 AMG")
+
+k_grid_2 = c(2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45,
+           50, 60, 70, 80, 90, 100, 125, 150, 175, 200, 233)
+rmse_out_2 = foreach(i=1:20, .combine='rbind') %dopar% {
+  sclass_65AMG_split =  initial_split(sclass_65AMG, prop=0.8)
+  sclass_65AMG_train = training(sclass_65AMG_split)
+  sclass_65AMG_test  = testing(sclass_65AMG_split)
+  
+  this_rmse_2 = foreach(k = k_grid_2, .combine='c') %do% {
+    knn_model = knnreg(price ~ mileage, data=sclass_350_train, k = k, use.all=TRUE)
+    modelr::rmse(knn_model, sclass_350_test)
+  }
+  data.frame(k=k_grid_2, rmse_2=this_rmse_2)
+}
+
+rmse_out_min_2 = rmse_out_2%>%
+arrange(rmse_2) %>%
+  head(1) 
+
+rmse_out_min_2
+
+```
+
+```{r, echo=FALSE, message=FALSE}
+
+ggplot(rmse_out_2) + geom_boxplot(aes(x=factor(k), y=rmse_2)) +
+  labs(title = "The plot of RMSE versus K") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+```
+
+The optimal k is 15, which has the minimum RMSE. The following is the plot of prediction.
+
+```{r, echo=FALSE}
+
+sclass_65AMG_split = initial_split(sclass_65AMG, prop=0.8)
+sclass_65AMG_train = training(sclass_65AMG_split)
+sclass_65AMG_test  = testing(sclass_65AMG_split)
+
+
+# pick best k=12, then plot the fitted model
+knn15_amg = knnreg(price ~ mileage, data=sclass_65AMG_train, k=15)
+
+# plot the fit
+sclass_65AMG_test = sclass_65AMG_test %>%
+  mutate(price_pred = predict(knn15_amg, sclass_65AMG_test))
+
+p_test = ggplot(data = sclass_65AMG_test) +
+  geom_point(mapping = aes(x= mileage, y= price), alpha=0.2)
+
+p_test + geom_line(aes(x=mileage, y=price_pred), color='red') +
+  labs(title = "Predictions") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+```
+
+-   Method 2: K-fold cross validation
+
+-   The plot of RMSE versus K. The following is the minimum RMSE, corresponding to k is 12.
+
+```{r,echo=FALSE}
+sclass_65AMG = sclass %>%
+  filter(trim == "65 AMG")
+
+# split into training and testing
+sclass_65AMG_split = initial_split(sclass_65AMG, prop=0.8)
+sclass_65AMG_train = training(sclass_65AMG_split)
+sclass_65AMG_test  = testing(sclass_65AMG_split)
+
+## FIND K
+## now use k-folds cross validation
+# method: second pipeline
+sclass_65AMG_folds = crossv_kfold(sclass_65AMG, k=K_folds)
+
+# so now we can do this across a range of k
+k_grid_2 = c(2, 4, 6, 8, 10,11,12,13,14, 15, 20, 25, 30, 35, 40, 45,
+             50, 60, 70, 80, 90, 100, 125, 150, 175, 200, 233)
+# models across the same train/test splits
+cv_grid_2 = foreach(k2=k_grid_2, .combine = 'rbind') %dopar% {
+  models_2=map(sclass_65AMG_folds$train, ~ knnreg(price ~ mileage, k=k2, data=., use.all=FALSE))
+  errs_2=map2_dbl(models_2, sclass_65AMG_folds$test, modelr::rmse)
+  c(k=k2, err_2 = mean(errs_2), std_err_2=sd(errs_2)/sqrt(K_folds))
+} %>% as.data.frame
+
+mink_65AMG=cv_grid_2%>%
+arrange(err_2) %>%
+  head(1) 
+
+mink_65AMG
+
+```
+
+```{r, echo=FALSE}
+
+# plot means and std errors versus k
+ggplot(cv_grid_2) + 
+  geom_point(aes(x=k, y=err_2)) + 
+  geom_errorbar(aes(x=k, ymin = err_2-std_err_2, ymax = err_2+std_err_2)) + 
+  scale_x_log10() +
+labs(title = "The plot of RMSE versus K") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+
+```
+
+```{r, echo=FALSE}
+
+sclass_65AMG_split = initial_split(sclass_65AMG, prop=0.8)
+sclass_65AMG_train = training(sclass_65AMG_split)
+sclass_65AMG_test  = testing(sclass_65AMG_split)
+
+# pick best k=12, then plot the fitted model
+knn12 = knnreg(price ~ mileage, data=sclass_65AMG_train, k=12)
+
+# plot the fit
+sclass_65AMG_test = sclass_65AMG_test %>%
+  mutate(price_pred = predict(knn12, sclass_65AMG_test))
+
+p_test = ggplot(data = sclass_65AMG_test) +
+  geom_point(mapping = aes(x= mileage, y= price), alpha=0.2)
+
+p_test + geom_line(aes(x=mileage, y=price_pred), color='red') +
+  labs(title = "Predictions") +
+       theme(plot.title=element_text(face="bold", hjust=0.5)) 
+
+```
+
+## Which trim yields a larger optimal value of K? Why do you think this is?
+
+When using the k-cross folds validation(an more accurate method than the method 1 ), the 350(K=15) yields a large optimal value of K than 65AMG(K=12). Because the 350's(416) number of observations is larger than the 65AMG's(292). For a better balance between bias and variance, the 350 with larger observations needs a larger K.
